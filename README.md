@@ -4,11 +4,17 @@
 **하나의 코어 엔진** 위에 용도별 어시스턴트를 **설정 파일(YAML)** 로만 갈아 끼울 수 있습니다.
 새 어시스턴트 추가 = "YAML 파일 한 개 추가"로 끝납니다.
 
-## 동작 방식 (2단계 RAG, 읽기 전용)
+## 동작 방식 (RAG, 읽기 전용)
 
-1. **검색(retriever)** — Outline REST API(`/documents.search`)로 질문과 관련된 문서를 찾습니다.
-   설정에 `collections`가 있으면 그 범위로 한정하고, 한 번에 못 찾으면 키워드를 바꿔 재검색합니다.
+0. **검색어 확장(query expansion)** — 질문을 그대로 검색하면 어휘가 안 맞아 자주 빗나갑니다
+   ("도선사"는 문서엔 "pilot", "상태 관리"는 "Zustand/Recoil"로 적혀 있는 식). LLM이 질문을
+   문서에 실제로 박혀 있을 검색어 묶음(조사 제거·영문 동의어·기술명, 보수적 최대 6개)으로 바꿉니다.
+   실패하면 조용히 건너뛰고 아래 검색을 그대로 진행합니다(보강일 뿐 의존하지 않음).
+1. **검색(retriever)** — 원문 질문 + 확장 검색어들을 Outline REST API(`/documents.search`)로 검색해
+   문서 id 기준으로 합칩니다. 여러 검색어가 함께 끌어온 문서(득표수)를 우선해 관련도를 매깁니다.
+   설정에 `collections`가 있으면 그 범위로 한정하고, 그래도 비면 키워드를 쪼개 재검색합니다.
 2. **열람** — 관련도 높은 상위 문서의 본문(`/documents.info`)을 가져옵니다.
+   거대 문서가 컨텍스트를 독점하지 않도록 본문은 일정 길이(`MAX_DOC_CHARS`)에서 자릅니다.
 3. **답변(answerer)** — 확보한 본문 + 설정의 `role_prompt`를 Claude에게 주고 답을 생성합니다.
 
 > 문서를 **생성·수정·삭제하지 않습니다.** 클라이언트는 검색·열람·컬렉션 조회만 호출합니다.
@@ -21,12 +27,14 @@ outline-rag-assistant/
 │   ├── config.py          # 모델명·엔드포인트·환경변수·고정 답변규칙을 한 곳에
 │   ├── outline_client.py  # Outline REST 읽기전용 클라이언트
 │   ├── retriever.py       # 검색·열람 로직
+│   ├── author_lookup.py   # 작성자 이름→사용자→문서목록 (RAG 아님, 작성자 필터)
 │   ├── answerer.py        # 문서+role_prompt로 Claude 답변 생성
 │   └── assistant.py       # 설정을 읽어 retriever+answerer를 조립
 ├── assistants/            # 용도별 설정 (코어를 건드리지 않음)
 │   ├── general.yaml       # 범용 Q&A
 │   └── onboarding.yaml    # 온보딩 도우미 (설정만으로 추가한 두 번째 예시)
-├── cli/main.py            # 터미널 진입점
+├── cli/main.py            # 터미널 진입점 (RAG Q&A + --author 작성자 조회)
+├── tools/                 # check_outline.py(연결 진단) · list_by_author.py(작성자 조회)
 ├── tests/                 # 가짜 클라이언트 기반 구조·동작 테스트
 ├── .env.example
 ├── requirements.txt
@@ -88,6 +96,28 @@ python -m cli.main --assistant general
 # 어시스턴트 바꿔서
 python -m cli.main --assistant onboarding "첫 출근날 무엇부터 하면 되나요?"
 ```
+
+## 작성자별 문서 조회 (`--author`)
+
+"특정 사람이 작성한 문서 목록"은 전문검색(RAG)이 아니라 **작성자 필터**가 필요합니다.
+(MCP 도구만으로는 작성자 메타데이터가 없어 불가능했던 부분입니다.)
+`--author`는 LLM/Anthropic 키 없이 Outline REST(`users.list`로 이름→사용자 해석 후
+`documents.list`로 필터)만으로 **결정적 목록**을 출력합니다.
+
+```bash
+# "다윗"님이 작성한 문서 목록
+python -m cli.main --author "다윗"
+
+# 특정 컬렉션으로 범위를 한정하고, 최대 20건만
+python -m cli.main --author "다윗" --collection "업무 자료" --limit 20
+
+# (동형 진단 도구) — 검색 대신 작성자 필터만 빠르게 확인
+python tools/list_by_author.py "다윗"
+```
+
+- 이름에 해당하는 사용자가 **없으면** "사용자를 찾지 못했습니다", **여러 명**이면(동명이인 등)
+  후보(이름·이메일)를 보여주고 더 구체적으로 지정하도록 안내합니다.
+- 토큰은 **본인 권한**으로 동작하므로, 내가 볼 수 있는 문서만 목록에 나타납니다.
 
 ## 새 어시스턴트 추가하는 법
 

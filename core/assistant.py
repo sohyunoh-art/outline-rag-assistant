@@ -16,6 +16,7 @@ from . import config
 from .answerer import Answerer
 from .answerer_claude_cli import ClaudeCliAnswerer
 from .outline_client import OutlineClient
+from .query_expander import build_query_expander
 from .retriever import Retriever, RetrievedDoc
 
 
@@ -67,14 +68,22 @@ class Assistant:
         *,
         client: OutlineClient | None = None,
         answerer: Answerer | None = None,
+        expander: Any | None = None,
     ) -> None:
         self.cfg = cfg
         self.client = client or OutlineClient()
-        self.retriever = Retriever(self.client, collections=cfg.collections, max_docs=cfg.max_docs)
+        self.retriever = Retriever(
+            self.client, collections=cfg.collections, max_docs=cfg.max_docs, expander=expander
+        )
         self.answerer = answerer or build_answerer(cfg.role_prompt)
 
     @classmethod
     def from_config_file(cls, path: str | Path, **kwargs: Any) -> "Assistant":
+        # production(CLI) 경로에서는 query expansion을 기본으로 켠다.
+        # 직접 Assistant(...)를 만드는 호출(테스트 등)은 영향받지 않는다.
+        # (명시적으로 expander를 넘기면 그대로 존중 — 불필요한 생성도 피한다)
+        if "expander" not in kwargs:
+            kwargs["expander"] = build_query_expander()
         return cls(AssistantConfig.from_yaml(path), **kwargs)
 
     def ask(self, question: str) -> Answer:

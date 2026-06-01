@@ -10,6 +10,12 @@ from __future__ import annotations
 ANSWERER_MODEL = "claude-sonnet-4-6"
 ANSWERER_MAX_TOKENS = 2048
 
+# 검색 앞단의 query expansion(질문→검색어)용. 짧은 출력이라 토큰·타임아웃을 작게 둔다.
+QUERY_EXPANSION_MAX_TOKENS = 256
+QUERY_EXPANSION_CLI_TIMEOUT = 60  # 초
+# 확장 검색어 상한(보수적). 너무 넓히면 오히려 노이즈가 는다.
+MAX_EXPANSION_TERMS = 6
+
 # ── 답변 백엔드 선택 ────────────────────────────────────────────────
 # "anthropic"   : Anthropic API 키 사용 (ANTHROPIC_API_KEY 필요)
 # "claude_cli"  : 로컬에 설치된 claude CLI(Claude Code) 사용 — API 키 없이 기존 로그인으로 동작
@@ -22,6 +28,9 @@ CLAUDE_CLI_TIMEOUT = 180  # 초
 OUTLINE_SEARCH_PATH = "/api/documents.search"
 OUTLINE_INFO_PATH = "/api/documents.info"
 OUTLINE_COLLECTIONS_PATH = "/api/collections.list"
+# 작성자별 조회용 (둘 다 읽기 전용 list 계열)
+OUTLINE_USERS_PATH = "/api/users.list"
+OUTLINE_DOCUMENTS_LIST_PATH = "/api/documents.list"
 
 # ── 환경변수 이름 ───────────────────────────────────────────────────
 ENV_ANTHROPIC_KEY = "ANTHROPIC_API_KEY"
@@ -32,6 +41,10 @@ ENV_ANSWERER_BACKEND = "ANSWERER_BACKEND"  # "anthropic"(기본) 또는 "claude_
 # ── 검색 기본값 ─────────────────────────────────────────────────────
 DEFAULT_MAX_DOCS = 5          # 답변 근거로 본문을 열람할 문서 수
 DEFAULT_SEARCH_LIMIT = 10     # 검색 단계에서 후보로 가져올 문서 수
+DEFAULT_AUTHOR_DOC_LIMIT = 50 # 작성자별 조회에서 가져올 문서 수
+# 한 문서 본문을 답변 컨텍스트에 넣을 때의 최대 글자 수. 5만자짜리 요구사항 문서 하나가
+# 컨텍스트를 독점해 정작 관련 문서를 희석시키는 것을 막는 가드.
+MAX_DOC_CHARS = 8000
 
 # ── 고정 답변 규칙 (모든 어시스턴트 공통) ───────────────────────────
 # role_prompt(용도별 역할)는 이 규칙 "위에" 얹힌다. 규칙 자체는 코어가 보장한다.

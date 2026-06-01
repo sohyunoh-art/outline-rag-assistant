@@ -7,6 +7,8 @@ Outline REST API 참고: 모든 호출은 POST + JSON 바디 + Bearer 토큰.
   - POST /api/documents.search   {query, collectionId?, limit}
   - POST /api/documents.info     {id}
   - POST /api/collections.list   {limit}
+  - POST /api/users.list         {query?, limit}            (작성자 이름 → userId 해석)
+  - POST /api/documents.list     {userId?, collectionId?, sort, direction, limit}  (작성자 필터 목록)
 """
 from __future__ import annotations
 
@@ -74,6 +76,33 @@ class OutlineClient:
 
     def list_collections(self, limit: int = 100) -> list[dict[str, Any]]:
         return self._post(config.OUTLINE_COLLECTIONS_PATH, {"limit": limit}).get("data", [])
+
+    def list_users(self, query: str | None = None, *, limit: int = 100) -> list[dict[str, Any]]:
+        """워크스페이스 사용자 목록(읽기 전용). query가 있으면 이름/이메일로 서버측 필터링."""
+        payload: dict[str, Any] = {"limit": limit}
+        if query:
+            payload["query"] = query
+        return self._post(config.OUTLINE_USERS_PATH, payload).get("data", [])
+
+    def list_documents_by_author(
+        self,
+        user_id: str,
+        *,
+        collection_id: str | None = None,
+        sort: str = "updatedAt",
+        direction: str = "DESC",
+        limit: int = config.DEFAULT_AUTHOR_DOC_LIMIT,
+    ) -> list[dict[str, Any]]:
+        """특정 사용자(userId)가 작성한 문서 목록(읽기 전용). 본문은 포함하지 않는다."""
+        payload: dict[str, Any] = {
+            "userId": user_id,
+            "sort": sort,
+            "direction": direction,
+            "limit": limit,
+        }
+        if collection_id:
+            payload["collectionId"] = collection_id
+        return self._post(config.OUTLINE_DOCUMENTS_LIST_PATH, payload).get("data", [])
 
     def find_collection_ids(self, names: list[str]) -> list[str]:
         """컬렉션 '이름' 목록을 실제 컬렉션 ID 목록으로 변환한다."""
