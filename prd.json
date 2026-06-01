@@ -1,0 +1,97 @@
+{
+  "title": "Outline 사내 문서 RAG 어시스턴트 (코어+설정 분리, 2단계 RAG)",
+  "architecture": "B: Outline REST API(검색/열람) + Anthropic SDK(답변). 읽기 전용.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "중앙 설정(config.py): 모델명·엔드포인트·환경변수·고정 답변규칙을 한 곳에",
+      "passes": true,
+      "acceptanceCriteria": [
+        "core/config.py에 ANSWERER_MODEL 상수가 단 한 곳에 정의된다",
+        "Outline REST 엔드포인트 경로(search/info/collections)와 환경변수 이름이 상수로 모여 있다",
+        "4대 답변 규칙(근거없으면 지어내지 않기·출처표시·충돌고지·질문언어)이 BASE_SYSTEM_PROMPT에 담겨 있다"
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Outline 읽기전용 클라이언트(outline_client.py)",
+      "passes": true,
+      "acceptanceCriteria": [
+        "search_documents/get_document/list_collections 메서드만 존재하고 create/update/delete 호출이 전혀 없다",
+        "Authorization: Bearer 토큰 헤더로 POST 호출하며, base_url/token 누락 시 명확한 오류를 던진다",
+        "find_collection_ids(names)로 컬렉션 이름→ID 변환을 지원한다"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "검색 단계(retriever.py): 다중 검색·컬렉션 한정·중복제거·상위 N 본문 열람",
+      "passes": true,
+      "acceptanceCriteria": [
+        "collections가 지정되면 해당 컬렉션 범위로만 검색한다(빈 리스트면 전체)",
+        "1차 검색이 비면 키워드만 추려 재검색한다",
+        "문서 id 기준 중복 제거 후 ranking 내림차순 상위 max_docs개의 본문만 get_document로 확보한다",
+        "FakeOutlineClient 주입 단위테스트로 위 동작이 검증된다"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "답변 단계(answerer.py): 문서+role_prompt로 Claude 답변 생성",
+      "passes": true,
+      "acceptanceCriteria": [
+        "system_prompt = BASE_SYSTEM_PROMPT + role_prompt 형태로 결합된다",
+        "확보한 문서의 제목·링크·본문이 사용자 메시지 컨텍스트에 포함된다",
+        "anthropic 클라이언트를 주입 가능하게 하여 키 없이도 테스트된다"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "조립(assistant.py): YAML 설정→Retriever+Answerer 묶기",
+      "passes": true,
+      "acceptanceCriteria": [
+        "AssistantConfig.from_yaml이 name/description/collections/max_docs/role_prompt를 읽는다",
+        "name 또는 role_prompt 누락 시 명확한 오류를 던진다",
+        "Assistant.ask(question)가 검색→답변을 순차 수행해 답+근거문서를 반환한다"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "CLI(cli/main.py): 어시스턴트 선택 + 단발/대화형 질문",
+      "passes": true,
+      "acceptanceCriteria": [
+        "--assistant 로 assistants/<이름>.yaml 을 고른다(기본 general)",
+        "인자로 질문을 주면 1회 답변, 없으면 대화형 REPL",
+        "없는 어시스턴트 이름이면 사용 가능 목록을 안내하고 종료한다"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "첫 어시스턴트 general.yaml + 코드품질 산출물(.env.example/requirements/README)",
+      "passes": true,
+      "acceptanceCriteria": [
+        "assistants/general.yaml이 지침서 형식대로 존재한다",
+        ".env.example에 ANTHROPIC_API_KEY/OUTLINE_API_URL/OUTLINE_API_TOKEN 자리표시자가 있다",
+        "README에 설치·설정·실행법과 'Outline API 토큰 발급법' 안내가 있다",
+        "README에 '새 어시스턴트 추가하는 법' 섹션이 있다"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "구조 검증: 두 번째 어시스턴트를 코어 수정 없이 YAML 한 개로만 추가",
+      "passes": true,
+      "acceptanceCriteria": [
+        "assistants/onboarding.yaml을 추가하는 것만으로 새 어시스턴트가 동작한다",
+        "core/ 아래 파일은 단 한 줄도 수정하지 않는다",
+        "테스트가 두 어시스턴트 모두 같은 코어로 로드됨을 검증한다"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "전체 테스트 통과 (pytest)",
+      "passes": true,
+      "acceptanceCriteria": [
+        "pytest 실행 시 모든 테스트가 통과한다",
+        "외부 API 키 없이(가짜 클라이언트로) 전 구간이 검증된다"
+      ]
+    }
+  ]
+}

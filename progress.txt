@@ -1,0 +1,59 @@
+## Outline 사내 문서 RAG 어시스턴트 — 진행 기록
+
+### 결정사항 (사용자 확인 완료)
+- 아키텍처 B: Outline REST API(검색/열람) + Anthropic SDK(답변). 읽기 전용.
+- Outline 토큰은 아직 없음 → 코드 전체 완성 + 가짜(Fake) 클라이언트로 구조 검증.
+  실제 연결은 사용자가 .env에 토큰 채운 뒤 동작.
+
+### 환경 특이사항 (다음 이터레이션 참고)
+- 이 시스템 python3(/usr/bin/python3, 3.12.3)에는 pip/ensurepip/venv 부트스트랩이 없었음.
+  get-pip.py로 user-site pip 설치(--break-system-packages) → venv 생성(--without-pip)
+  → venv 안에서 get-pip로 pip 부트스트랩 → requirements 설치. .venv/ 에 격리됨.
+- 시스템에 yaml 6.0.1, requests 2.31.0은 이미 존재. anthropic/pytest/dotenv는 신규 설치.
+
+### 구현 매핑 (지침서 가정 → 실제)
+- search_documents  → Outline POST /api/documents.search (query, collectionId?, limit)
+- read_document     → Outline POST /api/documents.info (id) → text/title/url
+- list_collections  → POST /api/collections.list
+- 도구 이름/경로/모델명은 core/config.py 한 곳에 상수로 모음.
+
+### 파일별 역할
+- core/config.py        : ANSWERER_MODEL, 엔드포인트 경로, 환경변수 이름, BASE_SYSTEM_PROMPT(4대 답변규칙)
+- core/outline_client.py: 읽기전용 REST 클라이언트(검색/열람/컬렉션). 쓰기 엔드포인트 없음.
+- core/retriever.py     : 컬렉션 한정→검색→(빈 결과시 키워드 재검색)→중복제거→ranking 상위 N 본문 열람
+- core/answerer.py      : system = BASE_SYSTEM_PROMPT + role_prompt, 문서 컨텍스트로 Claude 호출
+- core/assistant.py     : YAML(AssistantConfig) → Retriever+Answerer 조립, ask()
+- cli/main.py           : --assistant 선택, 단발/REPL
+- assistants/general.yaml, onboarding.yaml : 용도별 설정 (코어 무수정)
+- tests/test_structure.py : Fake 클라이언트/Anthropic 주입으로 키 없이 전 구간 검증
+
+### 검증 결과
+- pytest: 11 passed
+- CLI: 없는 어시스턴트명 → 사용 가능 목록 안내 후 종료 확인
+- 읽기 전용: outline_client.py에 create/update/delete/move 엔드포인트 없음(grep 확인)
+- 구조 분리: onboarding.yaml 추가만으로 두 번째 어시스턴트 동작, core/ 무수정 (테스트로 증명)
+
+### 남은 일 (사용자 몫)
+- .env에 ANTHROPIC_API_KEY / OUTLINE_API_URL / OUTLINE_API_TOKEN 채우면 실제 위키로 라이브 동작.
+- 라이브 검증 후 collections 범위(예: ["온보딩"]) 튜닝 권장.
+
+### 라이브 검증 (2026-06-01, Outline 절반)
+- OUTLINE_API_URL=https://outline.seadronix.com, 토큰으로 인증 성공. 컬렉션 9개 접근 확인.
+- "온보딩"/"프론트엔드" 검색 → 관련 문서 정확히 반환 (retriever 절반 실동작 확인).
+- 발견·수정: Outline가 doc url을 상대경로(/doc/..)로 줌 → retriever에서 base_url 붙여 절대링크화.
+  (tests의 FakeOutlineClient엔 base_url 없음 → getattr 기본값 "" 로 무영향, 11/11 통과 유지)
+- tools/check_outline.py 추가: Anthropic 키 없이 Outline 연결만 진단하는 스크립트.
+- answerer(Claude)는 ANTHROPIC_API_KEY 대기 중 — Seadronix 조직이 이미 Anthropic 사용(개인발급 막힘), 관리자 키 필요.
+
+### claude CLI 백엔드 추가 (2026-06-01, API 키 없이 end-to-end 성공)
+- 배경: Anthropic 콘솔이 "join your team"(Seadronix 조직 소속) → 개인 키 발급 막힘.
+- 해결: 답변 백엔드를 설정으로 교체 가능하게 함 (ANSWERER_BACKEND).
+  - "anthropic"(기본): Anthropic API. "claude_cli": 로컬 claude CLI(기존 Claude Code 로그인) 사용.
+- 신규 파일: core/answerer_claude_cli.py (claude -p --system-prompt, 본문은 stdin).
+- assistant.py: build_answerer()로 ENV_ANSWERER_BACKEND 보고 백엔드 선택.
+- 버그 잡음: load_dotenv가 .env의 플레이스홀더 ANTHROPIC_API_KEY를 환경에 올려 claude 서브프로세스가
+  "Invalid API key"로 실패 → ClaudeCliAnswerer가 서브프로세스 env에서 ANTHROPIC_API_KEY/AUTH_TOKEN 제거.
+- retriever recall 개선: 문장형 질문이 0건이면 토큰별로 각각 재검색해 합침(_MAX_FALLBACK_TOKENS=6).
+- 라이브 검증: `python -m cli.main --assistant general "온보딩은 어떻게 진행되나요?"` → 실 위키 검색 후
+  규칙 준수 답변(근거없음 솔직 고지 + 제목·Outline링크 출처 + 한국어) 생성 성공. pytest 14/14.
+- 알려진 한계: 문장형 질문 recall은 토큰검색으로 보완했지만 형태소 분석은 아님(조사 붙은 토큰 한계).
