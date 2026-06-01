@@ -41,6 +41,49 @@ outline-rag-assistant/
 └── README.md
 ```
 
+## 다른 사람도 쓸 수 있나요? (팀 공유 가이드)
+
+**네, 쓸 수 있습니다.** 다만 이건 "주소만 알려주면 들어가는 웹사이트(호스팅 서비스)"가 아니라,
+**각자 자기 컴퓨터에 내려받아 자기 자격증명으로 돌리는 CLI 도구**입니다. 그래서 공유한다는 건
+"이 깃허브 저장소를 각자 clone 해서 자기 `.env`를 채워 실행한다"는 뜻입니다.
+
+> 저장소: https://github.com/sohyunoh-art/outline-rag-assistant
+
+### 팀원이 쓰려면 필요한 것
+
+| 필요 조건 | 설명 |
+|---|---|
+| Outline 위키 접근 권한 | 같은 사내 Outline(`outline.seadronix.com`) 계정이 있어야 합니다. |
+| **본인 Outline API 토큰** | **내 토큰을 공유하지 말고, 각자 자기 토큰을 발급**합니다(아래 발급법). 토큰은 그 사람 권한으로 동작해 — 자기가 볼 수 있는 문서만 검색·답변됩니다. |
+| 답변 백엔드 1개 | ① Claude Code CLI가 깔려 로그인돼 있으면 `ANSWERER_BACKEND=claude_cli`(키 불필요), 또는 ② 본인 Anthropic API 키로 `ANSWERER_BACKEND=anthropic`. |
+| Python 3.10+ | CLI 실행 환경. |
+
+### 팀원이 처음 쓰는 4단계
+
+```bash
+# 1) 내려받기
+git clone https://github.com/sohyunoh-art/outline-rag-assistant.git
+cd outline-rag-assistant
+
+# 2) 설치 (아래 '설치' 절과 동일)
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# 3) 자기 자격증명 설정 — 절대 남의 .env를 받아쓰지 말고 직접 채웁니다
+cp .env.example .env
+#   .env 에 OUTLINE_API_URL / 본인 OUTLINE_API_TOKEN / ANSWERER_BACKEND 입력
+
+# 4) 질문
+python -m cli.main --assistant general "도선사가 뭐야?"
+```
+
+### 공유할 때 꼭 알아둘 것 (보안·권한)
+
+- **`.env`는 깃에 올라가지 않습니다**(`.gitignore`로 차단됨). 실제 토큰이 든 파일이니 **앞으로도 절대 커밋하지 마세요.** 공유는 토큰이 아니라 "발급 방법"을 공유하는 식으로 합니다.
+- **저장소 공개 범위**: Private이면 팀원을 collaborator로 초대해야 clone 됩니다. Public이면 누구나 clone 할 수 있지만, 그래도 **사내 Outline 접근 권한 + 본인 토큰**이 없으면 실제 답은 나오지 않습니다(코드만 보임).
+- **권한은 토큰을 따라갑니다**: A가 못 보는 비공개 문서는 A의 토큰으로는 검색·인용되지 않습니다. 즉 이 도구가 권한을 우회하지 않습니다.
+- (선택) 외부에 정식 오픈소스로 공개할 생각이면 `LICENSE` 파일을 추가하는 걸 권합니다. 없으면 법적으로는 "전체 권리 보유" 상태라 타인의 재사용 근거가 불명확합니다.
+
 ## 설치
 
 ```bash
